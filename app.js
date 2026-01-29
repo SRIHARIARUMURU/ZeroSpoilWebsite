@@ -4,19 +4,23 @@
 const USERS_KEY = 'zs_users';
 const SESSION_KEY = 'zs_session';
 const BOARD_KEY = 'zs_board'; // array of posts
+
 function getSession(){
   return JSON.parse(sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || 'null');
 }
+
 (function guard(){
   const s = getSession();
   if(!s){ window.location.href = 'auth.html'; }
   else { document.getElementById('navUser').textContent = `Hi, ${s.username}`; }
 })();
+
 function logout(){
   sessionStorage.removeItem(SESSION_KEY);
   localStorage.removeItem(SESSION_KEY);
   window.location.href = 'auth.html';
 }
+
 function storageKey(){
   const s = getSession(); const uname = s?.username || 'guest';
   return `zerospoil_${uname}`;
@@ -116,7 +120,7 @@ let editIndex = null;
     if([BOARD_KEY, storageKey(), USERS_KEY].includes(e.key)){
       renderBoard();
       renderNotifications();
-      render();
+      refreshMyInventory(); // ensure we normalize after external changes
     }
   });
 })();
@@ -146,6 +150,7 @@ function validateItem(item){
  * ADD / EDIT      *
  *******************/
 function addProduct(){
+  // FIX: read from the Add form field "expiry" and convert dd/mm/yyyy -> ISO
   const dmy = document.getElementById("expiry").value.trim();
   const iso = parseDMYToISO(dmy);
   if(!iso){ alert("Please enter a valid date in dd/mm/yyyy (e.g., 29/01/2026)."); return; }
@@ -174,6 +179,7 @@ function addProduct(){
 }
 
 function getIndexById(id){ return inventory.findIndex(x => x.id === id); }
+
 function openEditById(id){
   const idx = getIndexById(id); if(idx < 0) return;
   editIndex = idx;
@@ -183,6 +189,7 @@ function openEditById(id){
   document.getElementById("edit_storeAddress").value = i.storeAddress;
   document.getElementById("edit_product").value = i.product;
   document.getElementById("edit_qty").value = i.qty;
+  // Edit field expects dd/mm/yyyy
   document.getElementById("edit_expiry").value = formatISOtoDMY(i.expiryISO || "");
   document.getElementById("edit_category").value = i.category || "Other";
   const modal = document.getElementById("editModal");
@@ -341,11 +348,22 @@ function claimFromBoard(postId){
   if(me.username === post.owner){ refreshMyInventory(); }
 }
 
-// Helper to refresh current user's local inventory var (in case other tab changed it)
+// Helper to refresh current user's local inventory var (normalize like init)
 function refreshMyInventory(){
   try{
     const raw = JSON.parse(localStorage.getItem(storageKey()) || '[]');
-    inventory = raw;
+    inventory = raw.map(it => {
+      let expiryISO = it.expiryISO;
+      if(!expiryISO && typeof it.expiry === "string"){
+        expiryISO = /^\d{4}-\d{2}-\d{2}$/.test(it.expiry) ? it.expiry : parseDMYToISO(it.expiry);
+      }
+      return {
+        id: it.id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
+        ...it,
+        expiryISO: expiryISO || "",
+        redistribute: !!it.redistribute
+      };
+    });
   }catch{ /* noop */ }
   render();
 }
@@ -507,10 +525,7 @@ function renderBoard(){
   const s = getSession();
 
   const board = getBoard()
-    // Hide completed posts (qtyRemaining <= 0) if any were left
-    .filter(p => p.qtyRemaining > 0)
-    // Optional: show latest first (already unshifted)
-    ;
+    .filter(p => p.qtyRemaining > 0); // hide completed posts
 
   empty.style.display = board.length ? "none" : "block";
 
@@ -585,3 +600,4 @@ function markAllRead(){
   setNotifs(s.username, arr);
   renderNotifications();
 }
+``
