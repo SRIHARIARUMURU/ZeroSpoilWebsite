@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ZeroSpoil | Sign in</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="center">
+    <div class="auth-card">
+      <h1>🌱 ZeroSpoil</h1>
+      <div class="tabs">
+        <div id="tabLogin" class="tab active" onclick="switchTab('login')">Login</div>
+        <div id="tabRegister" class="tab" onclick="switchTab('register')">Register</div>
+      </div>
+
+      <!-- LOGIN -->
+      <div id="loginView">
+        <div class="form-grid" style="grid-template-columns:1fr">
+          <div><label>Username</label><input id="login_user" placeholder="Enter username" /></div>
+          <div><label>Password</label><input id="login_pass" type="password" placeholder="Enter password" /></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <input id="remember" type="checkbox" /><label for="remember">Remember me on this device</label>
+          </div>
+          <button class="btn" onclick="login()">Sign In</button>
+        </div>
+        <p id="login_err" class="muted" style="color:#c62828;display:none;margin-top:8px;"></p>
+        <p class="muted">Demo only: credentials are stored locally in your browser.</p>
+      </div>
+
+      <!-- REGISTER -->
+      <div id="registerView" style="display:none">
+        <div class="form-grid" style="grid-template-columns:1fr">
+          <div><label>Username</label><input id="reg_user" placeholder="Pick a username" /></div>
+          <div><label>Password</label><input id="reg_pass" type="password" placeholder="Create a password (min 6 chars)" /></div>
+          <div><label>Confirm Password</label><input id="reg_pass2" type="password" placeholder="Re-enter password" /></div>
+          <button class="btn" onclick="register()">Create Account</button>
+        </div>
+        <p id="reg_err" class="muted" style="color:#c62828;display:none;margin-top:8px;"></p>
+      </div>
+    </div>
+  </div>
+<script src="auth.js"></script>
+</body>
+</html>
