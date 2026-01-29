@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>ZeroSpoil | Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<!-- NAVBAR -->
+<nav>
+  <strong>🌱 ZeroSpoil</strong>
+  <div class="nav-links">
+    <a href="#hero">Home</a>
+    <a href="#features">Features</a>
+    <a href="#how">How</a>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#board">Board</a>
+    <a href="#contact">Contact</a>
+    <button id="notifBtn" class="btn ghost small" onclick="toggleNotifications()">🔔 Notifications<span id="notifCount" style="display:none"></span></button>
+    <span id="navUser" class="username"></span>
+    <button class="btn ghost small" onclick="logout()">Logout</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <h1>Zero Waste. Zero Loss.</h1>
+  <p>Smart freshness sharing between stores</p>
+  <button class="btn" onclick="document.getElementById('dashboard').scrollIntoView({behavior:'smooth'})">Get Started</button>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <h2>Why ZeroSpoil?</h2>
+  <div class="grid">
+    <div class="card"><h3>Store-Level Tracking</h3><p>Track product using Store ID and location</p></div>
+    <div class="card"><h3>Smart Redistribution</h3><p>Share surplus product between stores</p></div>
+    <div class="card"><h3>Zero Waste</h3><p>Prevent spoilage and losses</p></div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section id="how">
+  <h2>How It Works</h2>
+  <ol>
+    <li>Stores add product details</li>
+    <li>System monitors expiry dates</li>
+    <li>Unsold product is detected</li>
+    <li>Product is redistributed via the board; removed only when fully claimed</li>
+  </ol>
+</section>
+
+<!-- DASHBOARD -->
+<section id="dashboard">
+  <h2>Store Dashboard</h2>
+
+  <div class="card">
+    <h3>Add Product</h3>
+    <div class="form-grid">
+      <div><label for="storeId">Store ID</label><input id="storeId" placeholder="e.g., ST-001" /></div>
+      <div><label for="storeName">Store Name</label><input id="storeName" placeholder="e.g., Guindy Fresh" /></div>
+      <div class="full"><label for="storeAddress">Store Address</label><input id="storeAddress" placeholder="Address / Locality" /></div>
+      <div><label for="product">Product Name</label><input id="product" placeholder="e.g., Spinach" /></div>
+      <div><label for="qty">Quantity (kg)</label><input id="qty" type="number" min="0.1" step="0.1" placeholder="e.g., 12.5" /></div>
+      <div><label for="expiry">Expiry (dd/mm/yyyy)</label><input id="expiry" placeholder="dd/mm/yyyy" inputmode="numeric" /></div>
+      <div>
+        <label for="category">Category</label>
+        <select id="category">
+          <option value="">Select category</option>
+          <option>Leafy Greens</option><option>Fruits</option><option>Vegetables</option>
+          <option>Dairy</option><option>Bakery</option><option>Other</option>
+        </select>
+      </div>
+      <div class="full"><button class="btn" onclick="addProduct()">Add Product</button></div>
+    </div>
+    <p class="muted">Enter <strong>dd/mm/yyyy</strong>. Items with ≤ 2 days left are flagged as <strong>Near Expiry</strong>.</p>
+  </div>
+
+  <!-- Inventory filters + actions -->
+  <div class="toolbar">
+    <input id="search" class="grow" placeholder="Search by product or store..." oninput="applyFilters()" />
+    <select id="statusFilter" onchange="applyFilters()">
+      <option value="">All Status</option>
+      <option value="Fresh">Fresh</option>
+      <option value="Near Expiry">Near Expiry</option>
+      <option value="Redistributing">Redistributing</option>
+    </select>
+    <select id="categoryFilter" onchange="applyFilters()">
+      <option value="">All Categories</option>
+      <option>Leafy Greens</option><option>Fruits</option><option>Vegetables</option>
+      <option>Dairy</option><option>Bakery</option><option>Other</option>
+    </select>
+    <div class="btn-row">
+      <button class="btn small" onclick="exportData()">Export JSON</button>
+      <label class="btn small" style="cursor:pointer;">
+        Import JSON
+        <input id="importFile" type="file" accept="application/json" style="display:none" onchange="importData(event)" />
+      </label>
+      <button class="btn warn small" onclick="clearAll()">Clear All</button>
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th onclick="sortBy('storeId')">Store ID</th>
+        <th onclick="sortBy('storeName')">Store Name</th>
+        <th class="nosort">Store Address</th>
+        <th onclick="sortBy('product')">Product</th>
+        <th onclick="sortBy('qty')">Qty (kg)</th>
+        <th onclick="sortBy('expiryISO')">Expiry</th>
+        <th onclick="sortBy('status')">Status</th>
+        <th class="nosort">Category</th>
+        <th class="nosort">Action</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+  <p id="emptyState" class="muted" style="display:none;margin-top:10px;">No items match the current filters.</p>
+</section>
+
+<!-- REDISTRIBUTION BOARD -->
+<section id="board">
+  <h2>Redistribution Board</h2>
+  <p class="muted">Posts from all shops (this browser). Claim what you need; the owner’s item is removed only when fully claimed.</p>
+  <div class="card" id="notificationsCard" style="display:none; margin-bottom:16px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;">
+      <h3>Notifications</h3>
+      <button class="btn small" onclick="markAllRead()">Mark all as read</button>
+    </div>
+    <ul id="notifList" style="margin:8px 0 0; padding-left:18px;"></ul>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Owner</th>
+        <th>Store</th>
+        <th>Product</th>
+        <th>Expiry</th>
+        <th>Category</th>
+        <th>Qty Total</th>
+        <th>Qty Left</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody id="boardBody"></tbody>
+  </table>
+  <p id="boardEmpty" class="muted" style="display:none;margin-top:10px;">No live redistribution posts.</p>
+</section>
+
+<!-- FOOTER -->
+<footer>© 2026 ZeroSpoil | Store-to-Store Freshness Network</footer>
+
+<!-- EDIT MODAL -->
+<div id="editModal" class="modal-backdrop" aria-hidden="true">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Edit Item</h3>
+      <button class="close-x" onclick="closeEdit()">×</button>
+    </div>
+    <div class="form-grid">
+      <div><label for="edit_storeId">Store ID</label><input id="edit_storeId" /></div>
+      <div><label for="edit_storeName">Store Name</label><input id="edit_storeName" /></div>
+      <div class="full"><label for="edit_storeAddress">Store Address</label><input id="edit_storeAddress" /></div>
+      <div><label for="edit_product">Product</label><input id="edit_product" /></div>
+      <div><label for="edit_qty">Quantity (kg)</label><input id="edit_qty" type="number" min="0.1" step="0.1" /></div>
+      <div><label for="edit_expiry">Expiry (dd/mm/yyyy)</label><input id="edit_expiry" placeholder="dd/mm/yyyy" inputmode="numeric" /></div>
+      <div>
+        <label for="edit_category">Category</label>
+        <select id="edit_category">
+          <option>Leafy Greens</option><option>Fruits</option><option>Vegetables</option>
+          <option>Dairy</option><option>Bakery</option><option>Other</option>
+        </select>
+      </div>
+      <div class="full"><button class="btn" onclick="saveEdit()">Save Changes</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
