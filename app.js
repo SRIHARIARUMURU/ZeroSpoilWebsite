@@ -3,7 +3,7 @@
  *******************/
 const USERS_KEY = 'zs_users';
 const SESSION_KEY = 'zs_session';
-const BOARD_KEY = 'zs_board'; // array of posts
+const BOARD_KEY  = 'zs_board'; // array of posts
 
 function getSession(){
   return JSON.parse(sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY) || 'null');
@@ -22,23 +22,24 @@ function logout(){
 }
 
 function storageKey(){
-  const s = getSession(); const uname = s?.username || 'guest';
+  const s = getSession(); 
+  const uname = s?.username || 'guest';
   return `zerospoil_${uname}`;
 }
 
 /*******************
  * DATE UTILITIES  *
+ * (Keep parseDMYToISO for legacy data only)
  *******************/
 function parseDMYToISO(dmy){
   if(!dmy) return null;
   const m = dmy.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if(!m) return null;
-  let [_, d, mo, y] = m;
-  const dd = parseInt(d,10), mm = parseInt(mo,10), yyyy = parseInt(y,10);
+  const dd = parseInt(m[1],10), mm = parseInt(m[2],10), yyyy = parseInt(m[3],10);
   if(mm < 1 || mm > 12) return null;
   if(dd < 1 || dd > 31) return null;
   const jsDate = new Date(yyyy, mm - 1, dd);
-  if(jsDate.getFullYear() !== yyyy || jsDate.getMonth() !== (mm - 1) || jsDate.getDate() !== dd) return null;
+  if (jsDate.getFullYear() !== yyyy || (jsDate.getMonth()+1) !== mm || jsDate.getDate() !== dd) return null;
   return `${yyyy}-${String(mm).padStart(2,'0')}-${String(dd).padStart(2,'0')}`;
 }
 function formatISOtoDMY(iso){
@@ -68,7 +69,10 @@ function setNotifs(username, arr){
 }
 function pushNotif(username, message, payload={}){
   const arr = getNotifs(username);
-  arr.unshift({ id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()), message, payload, read:false, createdAt:new Date().toISOString() });
+  arr.unshift({ 
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random()), 
+    message, payload, read:false, createdAt:new Date().toISOString() 
+  });
   setNotifs(username, arr);
 }
 
@@ -94,14 +98,19 @@ let editIndex = null;
  * INIT            *
  *******************/
 (function init(){
-  // Load inventory for current user
+  // Load inventory for current user and normalize legacy data
   try{
     const raw = JSON.parse(localStorage.getItem(storageKey()) || '[]');
     inventory = raw.map(it => {
       let expiryISO = it.expiryISO;
+
+      // Legacy support:
+      //  - if 'expiry' is ISO -> use it
+      //  - if 'expiry' is dd/mm/yyyy -> convert
       if(!expiryISO && typeof it.expiry === "string"){
         expiryISO = /^\d{4}-\d{2}-\d{2}$/.test(it.expiry) ? it.expiry : parseDMYToISO(it.expiry);
       }
+
       return {
         id: it.id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
         ...it,
@@ -115,12 +124,12 @@ let editIndex = null;
   renderBoard();
   renderNotifications();
 
-  // Optional: Update UI if another tab updates LS (same browser)
+  // Reflect changes from other tabs (same browser profile)
   window.addEventListener('storage', (e) => {
     if([BOARD_KEY, storageKey(), USERS_KEY].includes(e.key)){
       renderBoard();
       renderNotifications();
-      refreshMyInventory(); // ensure we normalize after external changes
+      refreshMyInventory(); // re-normalize after external changes
     }
   });
 })();
@@ -150,10 +159,9 @@ function validateItem(item){
  * ADD / EDIT      *
  *******************/
 function addProduct(){
-  // FIX: read from the Add form field "expiry" and convert dd/mm/yyyy -> ISO
-  const dmy = document.getElementById("expiry").value.trim();
-  const iso = parseDMYToISO(dmy);
-  if(!iso){ alert("Please enter a valid date in dd/mm/yyyy (e.g., 29/01/2026)."); return; }
+  // <input type="date"> returns ISO (yyyy-mm-dd)
+  const iso = document.getElementById("expiry").value;
+  if(!iso){ alert("Please select a valid date."); return; }
 
   const item = {
     id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
@@ -184,14 +192,16 @@ function openEditById(id){
   const idx = getIndexById(id); if(idx < 0) return;
   editIndex = idx;
   const i = inventory[idx];
-  document.getElementById("edit_storeId").value = i.storeId;
-  document.getElementById("edit_storeName").value = i.storeName;
+  document.getElementById("edit_storeId").value      = i.storeId;
+  document.getElementById("edit_storeName").value    = i.storeName;
   document.getElementById("edit_storeAddress").value = i.storeAddress;
-  document.getElementById("edit_product").value = i.product;
-  document.getElementById("edit_qty").value = i.qty;
-  // Edit field expects dd/mm/yyyy
-  document.getElementById("edit_expiry").value = formatISOtoDMY(i.expiryISO || "");
-  document.getElementById("edit_category").value = i.category || "Other";
+  document.getElementById("edit_product").value      = i.product;
+  document.getElementById("edit_qty").value          = i.qty;
+
+  // For <input type="date">, set ISO directly
+  document.getElementById("edit_expiry").value       = (i.expiryISO || "");
+  document.getElementById("edit_category").value     = i.category || "Other";
+
   const modal = document.getElementById("editModal");
   modal.style.display = "flex";
   modal.setAttribute("aria-hidden", "false");
@@ -204,9 +214,8 @@ function closeEdit(){
 }
 function saveEdit(){
   if(editIndex === null) return;
-  const dmy = document.getElementById("edit_expiry").value.trim();
-  const iso = parseDMYToISO(dmy);
-  if(!iso){ alert("Please enter a valid date in dd/mm/yyyy."); return; }
+  const iso = document.getElementById("edit_expiry").value; // ISO
+  if(!iso){ alert("Please select a valid date."); return; }
 
   const updated = {
     ...inventory[editIndex],
@@ -243,7 +252,6 @@ function removeById(id){
 /*******************
  * REDISTRIBUTE    *
  *******************/
-// Post item to board (kept in inventory; alert all shops)
 function redistributeById(id){
   const idx = getIndexById(id); if(idx < 0) return;
   const item = inventory[idx];
@@ -348,7 +356,7 @@ function claimFromBoard(postId){
   if(me.username === post.owner){ refreshMyInventory(); }
 }
 
-// Helper to refresh current user's local inventory var (normalize like init)
+// Normalize and refresh current user's inventory
 function refreshMyInventory(){
   try{
     const raw = JSON.parse(localStorage.getItem(storageKey()) || '[]');
@@ -369,48 +377,8 @@ function refreshMyInventory(){
 }
 
 /*******************
- * EXPORT / IMPORT *
+ * CLEAR ALL       *
  *******************/
-function exportData(){
-  const blob = new Blob([JSON.stringify(inventory, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `zerospoil_backup_${new Date().toISOString().slice(0,10)}.json`;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-function importData(evt){
-  const file = evt.target.files?.[0]; if(!file) return;
-  const reader = new FileReader();
-  reader.onload = (e)=>{
-    try{
-      const arr = JSON.parse(e.target.result);
-      if(!Array.isArray(arr)) throw new Error("Invalid file structure.");
-      const normalized = arr.map(x=>{
-        let expiryISO = x.expiryISO;
-        if(!expiryISO && typeof x.expiry === "string"){
-          expiryISO = /^\d{4}-\d{2}-\d{2}$/.test(x.expiry) ? x.expiry : parseDMYToISO(x.expiry);
-        }
-        return {
-          id: x.id || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()+Math.random())),
-          ...x,
-          expiryISO: expiryISO || "",
-          redistribute: !!x.redistribute
-        };
-      });
-      const valid = normalized.every(x => x && typeof x === "object" && x.product && x.expiryISO && /^\d{4}-\d{2}-\d{2}$/.test(x.expiryISO));
-      if(!valid) throw new Error("Items missing required fields or invalid dates.");
-      inventory = normalized;
-      save();
-      alert("Import successful.");
-    }catch(err){
-      alert("Failed to import: " + err.message);
-    }finally{
-      evt.target.value = "";
-    }
-  };
-  reader.readAsText(file);
-}
 function clearAll(){
   if(!inventory.length){ alert("Nothing to clear."); return; }
   const ok = confirm("Clear all items from local storage for this user?");
@@ -476,8 +444,8 @@ function render(){
     const dLeft = daysLeftISO(i.expiryISO);
     const status = computeStatus(i);
     let badgeClass = "status-fresh";
-    if(status === "Near Expiry") badgeClass = "status-near";
-    if(status === "Redistributing") badgeClass = "status-redis";
+    if(status === "Near Expiry")      badgeClass = "status-near";
+    if(status === "Redistributing")   badgeClass = "status-redis";
 
     const statusHtml = `<span class="status-badge ${badgeClass}">
       ${status} <span class="chip">${dLeft}d left</span>
@@ -485,19 +453,19 @@ function render(){
 
     const tr = document.createElement("tr");
     const cells = [
-      { label:"Store ID", value:i.storeId },
-      { label:"Store Name", value:i.storeName },
-      { label:"Store Address", value:i.storeAddress },
-      { label:"Product", value:i.product },
-      { label:"Qty (kg)", value:(Number(i.qty)||0).toFixed(2) },
-      { label:"Expiry", value:formatISOtoDMY(i.expiryISO) },
-      { label:"Status", value:statusHtml, html:true },
-      { label:"Category", value:i.category || "Other" },
-      { label:"Action", html:true, value: `
+      { label:"Store ID",     value:i.storeId },
+      { label:"Store Name",   value:i.storeName },
+      { label:"Store Address",value:i.storeAddress },
+      { label:"Product",      value:i.product },
+      { label:"Qty (kg)",     value:(Number(i.qty)||0).toFixed(2) },
+      { label:"Expiry",       value:formatISOtoDMY(i.expiryISO) },
+      { label:"Status",       value:statusHtml, html:true },
+      { label:"Category",     value:i.category || "Other" },
+      { label:"Action",       html:true, value: `
         <div class="row-actions">
-          <button class="btn small" onclick="openEditById('${i.id}')" ${i.redistribute ? 'disabled' : ''}>Edit</button>
-          <button class="btn small info" onclick="redistributeById('${i.id}')" ${i.redistribute ? 'disabled' : ''}>Redistribute</button>
-          <button class="btn warn small" onclick="removeById('${i.id}')" ${i.redistribute ? 'disabled' : ''}>Delete</button>
+          <button class="btn small"      onclick="openEditById('${i.id}')"      ${i.redistribute ? 'disabled' : ''}>Edit</button>
+          <button class="btn small info" onclick="redistributeById('${i.id}')"  ${i.redistribute ? 'disabled' : ''}>Redistribute</button>
+          <button class="btn warn small" onclick="removeById('${i.id}')"        ${i.redistribute ? 'disabled' : ''}>Delete</button>
         </div>` }
     ];
     cells.forEach(c=>{
@@ -524,9 +492,7 @@ function renderBoard(){
   tbody.innerHTML = "";
   const s = getSession();
 
-  const board = getBoard()
-    .filter(p => p.qtyRemaining > 0); // hide completed posts
-
+  const board = getBoard().filter(p => p.qtyRemaining > 0); // hide completed posts
   empty.style.display = board.length ? "none" : "block";
 
   board.forEach(p=>{
@@ -539,14 +505,14 @@ function renderBoard(){
       : `<span class="muted">Your post</span>`;
 
     const cells = [
-      { label:"Owner", value:p.owner },
-      { label:"Store", value:`${p.storeName} (${p.storeId})` },
-      { label:"Product", value:p.product },
-      { label:"Expiry", value:formatISOtoDMY(p.expiryISO) },
-      { label:"Category", value:p.category || "Other" },
+      { label:"Owner",     value:p.owner },
+      { label:"Store",     value:`${p.storeName} (${p.storeId})` },
+      { label:"Product",   value:p.product },
+      { label:"Expiry",    value:formatISOtoDMY(p.expiryISO) },
+      { label:"Category",  value:p.category || "Other" },
       { label:"Qty Total", value:(Number(p.qtyTotal)||0).toFixed(2) },
-      { label:"Qty Left", value:(Number(p.qtyRemaining)||0).toFixed(2) },
-      { label:"Action", value:claimAction, html:true }
+      { label:"Qty Left",  value:(Number(p.qtyRemaining)||0).toFixed(2) },
+      { label:"Action",    value:claimAction, html:true }
     ];
     cells.forEach(c=>{
       const td = document.createElement("td");
@@ -564,8 +530,8 @@ function renderBoard(){
 function renderNotifications(){
   const s = getSession();
   const btnCount = document.getElementById('notifCount');
-  const card = document.getElementById('notificationsCard');
-  const list = document.getElementById('notifList');
+  const card     = document.getElementById('notificationsCard');
+  const list     = document.getElementById('notifList');
 
   const arr = getNotifs(s.username);
   const unread = arr.filter(n => !n.read).length;
@@ -576,7 +542,6 @@ function renderNotifications(){
     card.style.display = 'block';
   }else{
     btnCount.style.display = 'none';
-    // Keep card visible if there are any notifications; else hide
     card.style.display = arr.length ? 'block' : 'none';
   }
 
@@ -600,4 +565,3 @@ function markAllRead(){
   setNotifs(s.username, arr);
   renderNotifications();
 }
-``
